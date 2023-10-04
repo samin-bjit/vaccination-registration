@@ -4,6 +4,9 @@ env:
   shell: "/bin/sh"
   variables:
     IMAGE_TAG: registration-service
+  parameter-store:
+    ECR_REGISTRY_URI: ecr-registry-uri
+    AWS_DEFAULT_REGION: default-region-aws
 phases:
   install:
     runtime-versions:
@@ -11,9 +14,6 @@ phases:
 
   pre_build:
     commands:
-      
-      - ECR_REGISTRY_URI=$(aws ssm get-parameter --name ecr-registry-uri --query "Parameter.Value" --output text)
-      - AWS_DEFAULT_REGION=$(aws ssm get-parameter --name default-region-aws --query "Parameter.Value" --output text)
       - aws ecr get-login-password --region $AWS_DEFAULT_REGION | docker login --username AWS --password-stdin $ECR_REGISTRY_URI
       - echo Installation of Trivy...
       - echo Installation of Trivy...
@@ -36,7 +36,7 @@ phases:
     commands:
     - echo Docker Image Scanning...
     - trivy image --severity HIGH,CRITICAL $ECR_REGISTRY_URI:$IMAGE_TAG > trivy_scan.log
-    - aws s3 cp trivy_scan.log s3://vaccination-codepipeline-artifactstore/reports/Trivy/trivy_scan.$CODEBUILD_BUILD_ID.log
+    - aws s3 cp trivy_scan.log s3://vaccination-pipeline-artifactstore/reports/Trivy/trivy_scan.$CODEBUILD_BUILD_ID.log
 
 
        
