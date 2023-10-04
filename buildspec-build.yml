@@ -1,0 +1,49 @@
+version: 0.2
+
+env:
+  shell: "/bin/sh"
+  variables:
+    IMAGE_TAG: registration-service
+  parameter-store:
+    ECR_REGISTRY_URI: ecr-registry-uri
+    AWS_DEFAULT_REGION: default-region-aws
+
+phases:
+  install:
+    runtime-versions:
+      php: 8.2
+
+  pre_build:
+    commands:
+      - which docker
+      - echo Logging in to Amazon ECR...
+      - aws --version
+      - aws ecr get-login-password --region $AWS_DEFAULT_REGION | docker login --username AWS --password-stdin $ECR_REGISTRY_URI
+  
+      
+  build:
+    commands:
+      - echo Build started on `date`
+      - echo Building the Docker image...
+      - docker build -t $ECR_REGISTRY_URI:latest -f docker/php/php.dockerfile .
+      - docker tag $ECR_REGISTRY_URI:latest $ECR_REGISTRY_URI:$IMAGE_TAG
+      
+ 
+  post_build:
+    commands:
+      - echo Writing image to S3 bucket...
+      - docker save -o docker-image.tar.gz $ECR_REGISTRY_URI:$IMAGE_TAG
+      
+      
+artifacts:
+  files:
+    - docker-image.tar.gz
+    - buildspec-trivy-scan.yml
+    - buildspec-push.yml
+    - buildspec-deploy.yml
+    - k8s-manifests/registration-autoscaling.yaml
+    - k8s-manifests/registration-configmap.yaml
+    - k8s-manifests/registration-secret.yaml
+    - k8s-manifests/registration-dev.yaml
+    - k8s-manifests/registration-service.yaml
+privilegedMode: true

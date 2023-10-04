@@ -1,0 +1,49 @@
+version: 0.2
+
+env:
+  shell: "/bin/sh"
+
+  variables:
+    IMAGE_TAG: registration-service
+  parameter-store:
+    CLUSTER_NAME: cluster-name
+    AWS_DEFAULT_REGION: default-region-aws
+    ACCOUNT_ID: account-id
+    ECR_REGISTRY_URI: ecr-registry-uri
+
+phases:
+  install:
+    runtime-versions:
+      php: 8.2
+
+  pre_build:
+    commands:
+      
+      - export KUBECONFIG=$HOME/.kube/config
+   
+      
+  build:
+    commands:
+      - echo "Setting Environment Variables related to AWS CLI for Kube Config Setup"
+      - CREDENTIALS=$(aws sts assume-role --role-arn arn:aws:iam::$ACCOUNT_ID:role/service-role/Vaccination-CodeBuildServiceRole --role-session-name eks-codebuild --region $AWS_DEFAULT_REGION)
+      - export AWS_ACCESS_KEY_ID="$(echo ${CREDENTIALS} | jq -r '.Credentials.AccessKeyId')"
+      - export AWS_SECRET_ACCESS_KEY="$(echo ${CREDENTIALS} | jq -r '.Credentials.SecretAccessKey')"
+      - export AWS_SESSION_TOKEN="$(echo ${CREDENTIALS} | jq -r '.Credentials.SessionToken')"
+      - export AWS_EXPIRATION=$(echo ${CREDENTIALS} | jq -r '.Credentials.Expiration')
+      - echo "Update Kube Config"
+      - aws eks update-kubeconfig --name $CLUSTER_NAME --region $AWS_DEFAULT_REGION
+      
+  post_build:
+    commands:
+      - echo "Apply changes to kube manifests"  
+      - kubectl get pods -A
+      - kubectl apply -f k8s-manifests/registration-configmap.yaml
+      - kubectl apply -f k8s-manifests/registration-secret.yaml
+      - kubectl apply -f k8s-manifests/registration-autoscaling.yaml
+      - kubectl apply -f k8s-manifests/registration-service.yaml
+      - envsubst < k8s-manifests/registration-dev.yaml | kubectl apply -f -
+      - envsubst < k8s-manifests/registration-dev.yaml | kubectl rollout restart -f -
+
+
+    
+privilegedMode: true

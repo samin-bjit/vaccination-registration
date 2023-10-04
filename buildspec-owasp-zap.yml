@@ -1,0 +1,57 @@
+---
+version: 0.2
+
+env:
+  variables:
+    NAMESPACE: vaccination-system-dev
+  parameter-store:
+    CLUSTER_NAME: cluster-name
+    AWS_DEFAULT_REGION: default-region-aws
+
+phases:
+  install:
+    commands:
+      - echo Installing app dependencies and Kubectl tool for K8s...
+      - curl -o kubectl https://s3.us-west-2.amazonaws.com/amazon-eks/1.27.5/2023-09-14/bin/linux/amd64/kubectl   
+      - chmod +x ./kubectl
+      - mkdir -p $HOME/bin && cp ./kubectl $HOME/bin/kubectl && export PATH=$PATH:$HOME/bin
+      - echo 'export PATH=$PATH:$HOME/bin' >> $HOME/.bashrc
+      - source $HOME/.bashrc
+      - echo 'Check kubectl version'
+      - kubectl version --short --client 
+  build:
+    commands:
+      - echo Logging into Amazon EKS...
+      - codebuild-breakpoint
+      - aws eks update-kubeconfig --name $CLUSTER_NAME --region $AWS_DEFAULT_REGION
+      - echo check config 
+      - kubectl config view --minify
+      - echo check kubectl access
+      - kubectl get svc -n $NAMESPACE
+      - ALB_URL=$(kubectl get svc -n $NAMESPACE -o json | jq -r ".items[] | select(.status.loadBalancer.ingress[0].hostname != null) | .status.loadBalancer.ingress[0].hostname")
+      - echo $ALB_URL
+      - echo Starting OWASP Zed Attack Proxy active scanning...
+      - chmod 777 $PWD
+      - mkdir -p /zap/wrk
+      - chmod 777 /zap/wrk
+      - docker --version
+      - docker pull docker.io/owasp/zap2docker-stable
+      - docker run -v $(pwd):/zap/wrk/:rw -t owasp/zap2docker-stable zap-baseline.py -t http://$ALB_URL -J owaspresult.json || true
+  post_build:
+    commands:
+      - ls -lrt $CODEBUILD_SRC_DIR
+      - cat owaspresult.json
+      - |
+        jq "{ \"messageType\": \"CodeScanReport\", \"reportType\": \"OWASP-Zap\", \
+        \"createdAt\": $(date +\"%Y-%m-%dT%H:%M:%S.%3NZ\"), \"source_repository\": env.CODEBUILD_SOURCE_REPO_URL, \
+        \"productName\": \"VMS Registration Service\", \"companyName\": \"DevSecOps\", \
+        \"source_branch\": env.CODEBUILD_SOURCE_VERSION, \
+        \"build_id\": env.CODEBUILD_BUILD_ID, \
+        \"source_commitid\": env.CODEBUILD_RESOLVED_SOURCE_VERSION, \
+        \"report\": . }" owaspresult.json > payload.json
+        aws lambda invoke --function-name ImportVulToSecurityHub --payload fileb://payload.json owaspresult.json && echo "LAMBDA_SUCCEDED" || echo "LAMBDA_FAILED";
+
+     # - if [ $high_alerts != 0 ] || [ $medium_alerts != 0 ]; then echo "there are high or medium alerts.. failing the build" && exit 1; else exit 0; fi
+artifacts:
+  type: zip
+  files: '**/*'

@@ -1,0 +1,35 @@
+version: 0.2
+
+env:
+  shell: "/bin/sh"
+  variables:
+    IMAGE_TAG: registration-service
+  parameter-store:
+    ECR_REGISTRY_URI: ecr-registry-uri
+    AWS_DEFAULT_REGION: default-region-aws
+    
+phases:
+  install:
+    runtime-versions:
+      php: 8.2
+
+  pre_build:
+    commands:
+      - echo Logging in to Amazon ECR...
+      - aws ecr get-login-password --region $AWS_DEFAULT_REGION | docker login --username AWS --password-stdin $ECR_REGISTRY_URI
+
+  build:
+    commands:
+      - docker load -i docker-image.tar.gz
+      - image_id=$(docker images --format "{{.ID}}" | head -n 1)
+      - docker tag $image_id $ECR_REGISTRY_URI:$IMAGE_TAG
+      
+   
+  post_build:
+    commands:
+      - echo Build completed on `date`
+      - echo Pushing the Docker images...
+      - docker push $ECR_REGISTRY_URI:$IMAGE_TAG
+ 
+    
+privilegedMode: true

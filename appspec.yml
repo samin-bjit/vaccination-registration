@@ -1,0 +1,11 @@
+version: 0.0
+os: linux
+
+
+hooks:
+
+  ApplicationStart:
+    - location: scripts/start.sh
+      timeout: 20
+      runas: root
+      permissions: +x

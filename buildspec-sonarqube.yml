@@ -1,0 +1,76 @@
+version: 0.2
+env:
+  shell: bash
+  variables:
+    SONAR_PROJECTKEY: Vaccination-registration-sonaranalysis
+
+  parameter-store:
+    SONAR_HOSTURL: sonar-host
+    SONAR_TOKEN: sonar-token
+phases:
+  pre_build:
+    commands:
+      - mkdir /downloads/sonarqube -p
+      - cd /downloads/sonarqube
+      - wget https://binaries.sonarsource.com/Distribution/sonar-scanner-cli/sonar-scanner-cli-4.2.0.1873-linux.zip
+      - unzip sonar-scanner-cli-4.2.0.1873-linux.zip
+      - mv sonar-scanner-4.2.0.1873-linux /opt/sonar-scanner
+      - echo -e "sonar.host.url=http://http://13.229.172.144:9000/ \n  sonar.sourceEncoding=UTF-8 \n sonar.qualitygate.wait=true " >> /opt/sonar-scanner/conf/sonar-scanner.properties
+      - echo -e "#/bin/bash \n export PATH='$PATH:/opt/sonar-scanner/bin'" >> /etc/profile.d/sonar-scanner.sh
+      - source /etc/profile.d/sonar-scanner.sh
+      - sonar-scanner -v
+
+
+  build:
+    commands:
+      - echo "Running SonarQube analysis"
+      - cd ../..
+      - cd /codebuild/output/src*/src
+      - sonar-scanner 
+          -Dsonar.projectKey=$SONAR_PROJECTKEY -Dsonar.sources=. -Dsonar.host.url=$SONAR_HOSTURL -Dsonar.login=$SONAR_TOKEN > sonarqube_scanreport.json
+          
+
+  post_build:
+    commands:
+      - sonar_link=$(cat sonarqube_scanreport.json | egrep -o "you can browse http://[^, ]+")
+      - sonar_task_id=$(cat sonarqube_scanreport.json | egrep -o "task\?id=[^ ]+" | cut -d'=' -f2)
+      # Allow time for SonarQube background task to complete
+      - |
+        stat="PENDING";
+        while [ "$stat" != "SUCCESS" ]; do
+          if [ $stat = "FAILED" ] || [ $stat = "CANCELLED" ]; then
+            echo "SonarQube task $sonar_task_id failed";
+            exit 1;
+          fi
+          stat=$(curl -u $SONAR_TOKEN $SONAR_HOSTURL/api/ce/task\?id=$sonar_task_id | jq -r '.task.status');
+          sleep 5;
+        done
+      - sonar_analysis_id=$(curl -u $SONAR_TOKEN $SONAR_HOSTURL/api/ce/task\?id=$sonar_task_id | jq -r '.task.analysisId')
+      - quality_status=$(curl -u $SONAR_TOKEN $SONAR_HOSTURL/api/qualitygates/project_status\?analysisId=$sonar_analysis_id | jq -r '.projectStatus.status')
+      - SCAN_RESULT=$(curl -o sonarqube_scanreport.json -u $SONAR_TOKEN $SONAR_HOSTURL/api/issues/search?createdAfter=2020-10-21&componentKeys=devsecops&severities=CRITICAL,BLOCKER&languages=php&types=VULNERABILITY&onComponentOnly=true)
+      - | 
+        jq "{ \"messageType\": \"CodeScanReport\", \"reportType\": \"SONAR-QUBE\", \
+        \"createdAt\": $(date +\"%Y-%m-%dT%H:%M:%S.%3NZ\"), \"source_repository\": env.CODEBUILD_SOURCE_REPO_URL, \
+        \"productName\": \"VMS Registration Service\", \"companyName\": \"DevSecOps\", \
+        \"source_branch\": env.CODEBUILD_SOURCE_VERSION, \
+        \"build_id\": env.CODEBUILD_BUILD_ID, \
+        \"source_commitid\": env.CODEBUILD_RESOLVED_SOURCE_VERSION, \
+        \"report\": . }" sonarqube_scanreport.json > payload.json
+        aws lambda invoke --function-name ImportVulToSecurityHub --payload fileb://payload.json sonarqube_scanreport.json && echo "LAMBDA_SUCCEDED" || echo "LAMBDA_FAILED";
+      - |
+        if [ "$quality_status" = "ERROR" ] || [ "$quality_status" = "WARN" ]; then
+          
+          echo "Quality gate check failed: $quality_status";
+          exit 1;
+        elif [ "$quality_status" = "OK" ]; then
+          
+          echo "Quality gate check passed: $quality_status";
+        else
+          echo "Quality gate status is unexpected: $quality_status";
+          exit 1;
+        fi
+
+      
+artifacts:
+  files:
+    - target

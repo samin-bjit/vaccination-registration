@@ -1,0 +1,91 @@
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: registration-service-deployment 
+  namespace: vaccination-system-dev
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      vms: registration
+  template:
+    metadata:
+      labels:
+        vms: registration
+    spec:
+      containers:
+        - name: registration-service-pod
+          image: ${ECR_REGISTRY_URI}:${IMAGE_TAG}
+          imagePullPolicy: Always
+          env:
+            - name: DB_PORT
+              valueFrom:
+                configMapKeyRef:
+                  name: registration-config
+                  key: DB_PORT
+            - name: DB_CONNECTION
+              valueFrom:
+                configMapKeyRef:
+                  name: registration-config
+                  key: DB_CONNECTION
+            - name: DB_DATABASE
+              valueFrom:
+                configMapKeyRef:
+                  name: registration-config
+                  key: DB_DATABASE
+            - name: DB_USERNAME
+              valueFrom:
+                configMapKeyRef:
+                  name: registration-config
+                  key: DB_USERNAME
+            - name: SQS_REGION
+              valueFrom:
+                configMapKeyRef:
+                  name: registration-config
+                  key: SQS_REGION
+            - name: SQS_PREFIX
+              valueFrom:
+                configMapKeyRef:
+                  name: registration-config
+                  key: SQS_PREFIX
+            - name: AWS_ACCESS_KEY_ID
+              valueFrom:
+                configMapKeyRef:
+                  name: registration-config
+                  key: AWS_ACCESS_KEY_ID
+            - name: AWS_SECRET_ACCESS_KEY
+              valueFrom:
+                configMapKeyRef:
+                  name: registration-config
+                  key: AWS_SECRET_ACCESS_KEY
+            - name: AWS_DEFAULT_REGION
+              valueFrom:
+                configMapKeyRef:
+                  name: registration-config
+                  key: AWS_DEFAULT_REGION
+            - name: AWS_BUCKET
+              valueFrom:
+                configMapKeyRef:
+                  name: registration-config
+                  key: AWS_BUCKET
+            - name: DB_HOST
+              valueFrom:
+                secretKeyRef:
+                  name: db-credentials
+                  key: db-host
+            - name: DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: db-credentials
+                  key: db-password
+                  
+          ports:
+            - containerPort: 19090
+          resources:
+            limits:
+              cpu: 400m
+              memory: 500Mi
+            requests:
+              cpu: 100m
+              memory: 200Mi

@@ -1,0 +1,49 @@
+version: "3.8"
+
+networks:
+  vaccination_app:
+    name: vaccination_app
+    driver: bridge
+
+services:
+  vaccination_registration_app:
+    build:
+      context: .
+      dockerfile: ./docker/php/php.dockerfile
+      args:
+        - APP_ENV=${APP_ENV}
+        - APP_KEY=${APP_KEY}
+    container_name: vaccination_registration_app
+    image: vaccination_app/vaccination_registration_app
+    ports:
+      - "8009:19090"
+    environment:
+      - APP_ENV=${APP_ENV}
+      - APP_KEY=${APP_KEY}
+    volumes:
+      - ./:/var/www/html:delegated
+    restart: unless-stopped
+    tty: true
+    depends_on:
+      - vaccination_registration_db
+    networks:
+      - vaccination_app
+
+  # Mysql database
+  vaccination_registration_db:
+    image: mysql:5.7
+    container_name: vaccination_registration_db
+    restart: unless-stopped
+    tty: true
+    ports:
+      - "3309:3306"
+    env_file:
+      - ./docker/mysql/mysql.env
+    volumes:
+      - ./docker/mysql/data:/var/lib/mysql/
+    networks:
+      - vaccination_app
+
+volumes:
+  vaccination_registration_mysql_data:
+    driver: local

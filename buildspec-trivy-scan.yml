@@ -1,0 +1,46 @@
+version: 0.2
+
+env:
+  shell: "/bin/sh"
+  variables:
+    IMAGE_TAG: registration-service
+phases:
+  install:
+    runtime-versions:
+      php: 8.2
+
+  pre_build:
+    commands:
+      
+      - ECR_REGISTRY_URI=$(aws ssm get-parameter --name ecr-registry-uri --query "Parameter.Value" --output text)
+      - AWS_DEFAULT_REGION=$(aws ssm get-parameter --name default-region-aws --query "Parameter.Value" --output text)
+      - aws ecr get-login-password --region $AWS_DEFAULT_REGION | docker login --username AWS --password-stdin $ECR_REGISTRY_URI
+      - echo Installation of Trivy...
+      - echo Installation of Trivy...
+      - yum install rpm
+      - rpm -ivh https://github.com/aquasecurity/trivy/releases/download/v0.18.3/trivy_0.18.3_Linux-64bit.rpm
+      - trivy -v version
+ 
+  
+      
+  build:
+    commands:
+      - docker load -i docker-image.tar.gz
+      - image_id=$(docker images --format "{{.ID}}" | head -n 1)
+      - docker tag $image_id $ECR_REGISTRY_URI:$IMAGE_TAG
+      
+      
+      
+     
+  post_build:
+    commands:
+    - echo Docker Image Scanning...
+    - trivy image --severity HIGH,CRITICAL $ECR_REGISTRY_URI:$IMAGE_TAG > trivy_scan.log
+    - aws s3 cp trivy_scan.log s3://vaccination-codepipeline-artifactstore/reports/Trivy/trivy_scan.$CODEBUILD_BUILD_ID.log
+
+
+       
+       
+
+    
+privilegedMode: true
