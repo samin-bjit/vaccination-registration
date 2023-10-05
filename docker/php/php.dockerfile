@@ -1,4 +1,4 @@
-FROM php:8.1-fpm AS php-base
+FROM php:8.1-fpm-bullseye AS php-base
 
 WORKDIR /var/www/html
 
