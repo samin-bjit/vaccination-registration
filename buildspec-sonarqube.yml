@@ -32,7 +32,7 @@ phases:
 
   post_build:
     commands:
-      - sonar_link=$(cat sonarqube_scanreport.json | egrep -o "you can browse http://[^, ]+")
+      - sonar_link=$(cat sonarqube_scanreport.json | egrep -o "you can browse https://[^, ]+")
       - sonar_task_id=$(cat sonarqube_scanreport.json | egrep -o "task\?id=[^ ]+" | cut -d'=' -f2)
       # Allow time for SonarQube background task to complete
       - |
