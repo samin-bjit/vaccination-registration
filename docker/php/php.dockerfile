@@ -12,6 +12,9 @@ RUN docker-php-ext-enable pdo_mysql
 RUN docker-php-ext-install opcache
 RUN docker-php-ext-enable opcache
 
+# Install dos2unix to change the format of script
+RUN apt-get install -y dos2unix && dos2unix /usr/local/bin/entrypoint.sh
+
 # Install PHP Composer
 RUN curl -sS https://getcomposer.org/installer | php -- --install-dir=/usr/local/bin --filename=composer
 
